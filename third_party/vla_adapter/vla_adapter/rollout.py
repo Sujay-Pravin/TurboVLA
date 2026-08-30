@@ -20,6 +20,7 @@ from pathlib import Path
 import sys
 from typing import Optional
 
+import cv2
 import imageio
 import numpy as np
 import tqdm
@@ -242,6 +243,28 @@ def _run_episode(
         wrist = rotate_libero_image(obs["robot0_eye_in_hand_image"])
         replay_images.append(np.concatenate([primary, wrist], axis=1))
 
+        # Live visualization window with task instruction overlay
+        combined_frame = np.concatenate([primary, wrist], axis=1)
+        bgr_frame = cv2.cvtColor(combined_frame, cv2.COLOR_RGB2BGR)
+        
+        # Add black banner at the top for instruction text
+        banner_h = 32
+        h, w, _ = bgr_frame.shape
+        display_img = np.zeros((h + banner_h, w, 3), dtype=np.uint8)
+        display_img[banner_h:, :] = bgr_frame
+        cv2.putText(
+            display_img,
+            f"Task: {task_description}",
+            (10, 22),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.5,
+            (0, 255, 255),
+            1,
+            cv2.LINE_AA,
+        )
+        cv2.imshow("LIBERO Policy Rollout", display_img)
+        cv2.waitKey(1)
+
         if not action_queue:
             env_actions = policy.predict_env_action_chunk(
                 primary,
@@ -360,6 +383,7 @@ def eval_libero(cfg: GenerateConfig) -> float:
             )
 
         env, task_description = _make_libero_env(task, cfg)
+        logging.info(">>> Running Task %d/%d: %s", task_id + 1, n_tasks, task_description)
         task_successes = 0
         task_episodes = 0
         try:

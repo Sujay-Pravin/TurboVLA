@@ -269,6 +269,51 @@ def _strip_module_prefix(state_dict: dict[str, torch.Tensor]) -> dict[str, torch
     return cleaned
 
 
+def _remap_checkpoint_key(k: str) -> str | None:
+    """Remap legacy checkpoint parameter names to current TurboVLA names."""
+    # DINOv3 backbone
+    if k.startswith("vision_encoder.backbone."):
+        return "dinov3." + k[len("vision_encoder.backbone.") :]
+    if k.startswith("vision_encoder."):
+        return "dinov3." + k[len("vision_encoder.") :]
+    # Vision projector
+    if k.startswith("vision_projection.input_norm."):
+        return "vision_proj.norm_in." + k[len("vision_projection.input_norm.") :]
+    if k.startswith("vision_projection.output_norm."):
+        return "vision_proj.norm_out." + k[len("vision_projection.output_norm.") :]
+    if k.startswith("vision_projection."):
+        return "vision_proj." + k[len("vision_projection.") :]
+    # Text projector
+    if k.startswith("text_encoder.text_projection."):
+        return "text_proj." + k[len("text_encoder.text_projection.") :]
+    if k.startswith("text_encoder.text_proj."):
+        return "text_proj." + k[len("text_encoder.text_proj.") :]
+    # BERT weights in checkpoint are skipped because evaluation uses precomputed BERT text cache
+    if k.startswith("text_encoder.bert."):
+        return None
+    # View embedding
+    if k == "view_embedding":
+        return "view_embed"
+    # Vision-language fusion enhancer
+    if k.startswith("vision_language_interaction."):
+        return "feature_enhancer." + k[len("vision_language_interaction.") :]
+    # State projector
+    if k.startswith("action_head.state_projection."):
+        sub = k[len("action_head.state_projection.") :]
+        if sub == "position":
+            return "state_proj.pos"
+        if sub.startswith("output_norm."):
+            return "state_proj.out_norm." + sub[len("output_norm.") :]
+        return "state_proj." + sub
+    # Action policy
+    if k.startswith("action_head.decoder."):
+        sub = k[len("action_head.decoder.") :]
+        if sub.startswith("action_projection."):
+            return "action_policy.action_head." + sub[len("action_projection.") :]
+        return "action_policy." + sub
+    return k
+
+
 def _make_model_args(
     dinov3_path: str,
     text_cache_path: str,
@@ -489,9 +534,16 @@ class TurboVLAPolicy:
         loadable = {}
         skipped_shape = []
         skipped_missing = []
-        for key, tensor in source_state.items():
+        for raw_key, tensor in source_state.items():
+            key = raw_key
             if key not in target_state:
-                skipped_missing.append(key)
+                remapped = _remap_checkpoint_key(key)
+                if remapped is None:
+                    continue
+                key = remapped
+
+            if key not in target_state:
+                skipped_missing.append(raw_key)
                 continue
             if target_state[key].shape != tensor.shape:
                 skipped_shape.append((key, tuple(tensor.shape), tuple(target_state[key].shape)))
