@@ -150,6 +150,23 @@ CUDA_VISIBLE_DEVICES=0 python experiments/libero/evaluate.py \
     --precision bf16 \
     --mujoco-gl egl \
     --result_json_path outputs/evaluation/libero_object.json
+
+#Use in CPU
+    PYOPENGL_PLATFORM="osmesa" 
+    CUDA_VISIBLE_DEVICES="" 
+    python experiments/libero/evaluate.py     
+    --ckpt_path pretrained_models/TurboVLA/checkpoints/libero/object.pth     
+    --dinov3_path pretrained_models/dinov3-vitb     
+    --text_cache_path data/libero_all4_bert_text_cache.pt     
+    --stats_path experiments/libero/configs/libero_all4_stats.json     
+    --stats_key libero_all4_no_noops     
+    --task_suite_name libero_object     
+    --num_trials_per_task 50     
+    --chunk_size 12     
+    --num_open_loop_steps 12    
+    --precision fp32    
+    --mujoco-gl osmesa  
+    --result_json_path outputs/evaluation/libero_object.json
 ```
 
 Results are saved to `outputs/evaluation/libero_object.json` (per-task and overall success rates).
